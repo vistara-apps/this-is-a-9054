@@ -1,22 +1,49 @@
 // Content generation utilities using OpenAI
+import OpenAI from 'openai'
 
 const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY || ''
 
-// Note: In production, this should be handled server-side for security
+// Initialize OpenAI client (Note: In production, this should be handled server-side for security)
+const openai = OPENAI_API_KEY ? new OpenAI({
+  apiKey: OPENAI_API_KEY,
+  dangerouslyAllowBrowser: true // Only for demo - use server-side in production
+}) : null
+
 export const generateStateSpecificGuide = async (state, language = 'en') => {
   try {
-    // For demo purposes, we'll return mock data
-    // In production, you'd call the OpenAI API here
-    
-    if (!OPENAI_API_KEY) {
+    if (!openai) {
       console.warn('OpenAI API key not configured, using fallback content')
       return getFallbackGuide(state, language)
     }
 
-    // OpenAI API call would go here
-    // const response = await openai.chat.completions.create({...})
+    const prompt = `Generate a comprehensive legal rights guide for ${state} state in ${language === 'es' ? 'Spanish' : 'English'}. 
+    Include:
+    1. Core constitutional rights during police interactions
+    2. State-specific laws and procedures
+    3. Common scenarios (traffic stops, street encounters, home visits)
+    4. What to say and what not to say
+    5. Recording laws in ${state}
     
-    return getFallbackGuide(state, language)
+    Format as JSON with sections: coreRights (array of {title, description}), scenarios (array of {title, description, actions}), recordingLaws, and stateSpecificNotes.`
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-3.5-turbo",
+      messages: [
+        {
+          role: "system",
+          content: "You are a legal expert specializing in civil rights and police interaction laws. Provide accurate, helpful information while emphasizing the importance of remaining calm and respectful during police encounters."
+        },
+        {
+          role: "user",
+          content: prompt
+        }
+      ],
+      max_tokens: 2000,
+      temperature: 0.3
+    })
+
+    const generatedContent = JSON.parse(response.choices[0].message.content)
+    return generatedContent
     
   } catch (error) {
     console.error('Error generating state guide:', error)
@@ -24,10 +51,42 @@ export const generateStateSpecificGuide = async (state, language = 'en') => {
   }
 }
 
-export const generateMultilingualScript = async (language = 'en') => {
+export const generateMultilingualScript = async (language = 'en', scenario = 'general') => {
   try {
-    // For demo purposes, we'll return mock data
-    return getFallbackScripts(language)
+    if (!openai) {
+      console.warn('OpenAI API key not configured, using fallback content')
+      return getFallbackScripts(language)
+    }
+
+    const languageName = language === 'es' ? 'Spanish' : 'English'
+    const prompt = `Generate helpful phrases and scripts for police interactions in ${languageName} for the scenario: ${scenario}.
+    
+    Include:
+    1. Recommended phrases that assert rights while remaining respectful
+    2. Phrases to avoid that might escalate situations
+    3. De-escalation language
+    4. Questions to ask about the nature of the stop
+    
+    Format as JSON with sections: recommended (array of strings), avoid (array of strings), deescalation (array of strings), questions (array of strings).`
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-3.5-turbo",
+      messages: [
+        {
+          role: "system",
+          content: "You are an expert in civil rights and conflict de-escalation. Provide phrases that help people assert their rights while maintaining respect and safety during police interactions."
+        },
+        {
+          role: "user",
+          content: prompt
+        }
+      ],
+      max_tokens: 1000,
+      temperature: 0.2
+    })
+
+    const generatedScripts = JSON.parse(response.choices[0].message.content)
+    return generatedScripts
     
   } catch (error) {
     console.error('Error generating scripts:', error)

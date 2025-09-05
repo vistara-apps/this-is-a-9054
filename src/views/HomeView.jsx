@@ -1,7 +1,8 @@
 import React from 'react'
-import { Shield, Book, Video, AlertTriangle, Star, ArrowRight } from 'lucide-react'
+import { Shield, Book, Video, AlertTriangle, Star, ArrowRight, CreditCard } from 'lucide-react'
 import InfoCard from '../components/InfoCard'
 import CallToActionButton from '../components/CallToActionButton'
+import { upgradeToPremium, PRICING_PLANS } from '../utils/stripe'
 
 const HomeView = ({ user, setUser, setCurrentView }) => {
   const quickActions = [
@@ -28,9 +29,20 @@ const HomeView = ({ user, setUser, setCurrentView }) => {
     }
   ]
 
-  const handleUpgradeToPremium = () => {
-    setUser(prev => ({ ...prev, subscriptionStatus: 'premium' }))
-    alert('Welcome to Guardian Guide Premium!')
+  const handleUpgradeToPremium = async () => {
+    try {
+      const result = await upgradeToPremium(user.userId || 'demo-user')
+      if (result.success) {
+        // In production, subscription status would be updated via webhook
+        setUser(prev => ({ ...prev, subscriptionStatus: 'premium' }))
+        alert('Welcome to Guardian Guide Premium!')
+      } else {
+        alert('Failed to upgrade to premium. Please try again.')
+      }
+    } catch (error) {
+      console.error('Error upgrading to premium:', error)
+      alert('Failed to upgrade to premium. Please try again.')
+    }
   }
 
   return (
@@ -103,8 +115,8 @@ const HomeView = ({ user, setUser, setCurrentView }) => {
                 onClick={handleUpgradeToPremium}
                 className="w-full"
               >
-                <Star className="h-5 w-5" />
-                <span>Upgrade for $3/month</span>
+                <CreditCard className="h-5 w-5" />
+                <span>Upgrade for ${PRICING_PLANS.premium.price}/month</span>
               </CallToActionButton>
             </div>
           }

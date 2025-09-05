@@ -1,7 +1,8 @@
 import React, { useState } from 'react'
-import { AlertTriangle, Phone, Plus, Trash2, Send } from 'lucide-react'
+import { AlertTriangle, Phone, Plus, Trash2, Send, CheckCircle, XCircle, Clock, Mail, MessageSquare } from 'lucide-react'
 import InfoCard from '../components/InfoCard'
 import CallToActionButton from '../components/CallToActionButton'
+import { sendEmergencyAlert as sendAlert, validateEmergencyContact, createEmergencyCard, shareEmergencyCard } from '../utils/emergency'
 
 const EmergencyView = ({ user, setUser }) => {
   const [newContact, setNewContact] = useState({ name: '', phone: '', relationship: '' })
@@ -42,18 +43,30 @@ const EmergencyView = ({ user, setUser }) => {
     setIsLoading(true)
     
     try {
-      // Simulate sending alerts
-      await new Promise(resolve => setTimeout(resolve, 2000))
+      // Prepare incident details
+      const incidentDetails = {
+        type: 'Emergency Alert',
+        userName: user.name || 'Guardian Guide User',
+        recordingUrl: null // Could be added if there's an active recording
+      }
+
+      // Send alerts to all emergency contacts
+      const results = await sendAlert(user.emergencyContacts, user.location, incidentDetails)
       
-      const message = `EMERGENCY ALERT from Guardian Guide: I am currently in a police interaction at ${
-        user.location ? `${user.location.latitude}, ${user.location.longitude}` : 'unknown location'
-      }. Time: ${new Date().toLocaleString()}. This is an automated message.`
+      // Check results
+      const successCount = results.filter(r => r.success).length
+      const failCount = results.filter(r => !r.success).length
       
-      // In a real app, this would send SMS/calls to emergency contacts
-      console.log('Emergency alert sent:', message)
-      
-      setAlertSent(true)
-      setTimeout(() => setAlertSent(false), 5000)
+      if (successCount > 0) {
+        setAlertSent(true)
+        setTimeout(() => setAlertSent(false), 5000)
+        
+        if (failCount > 0) {
+          alert(`Alert sent to ${successCount} contacts. ${failCount} failed to send.`)
+        }
+      } else {
+        alert('Failed to send alerts to any contacts. Please check your settings.')
+      }
       
     } catch (error) {
       console.error('Failed to send emergency alert:', error)
