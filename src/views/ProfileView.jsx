@@ -1,7 +1,9 @@
 import React, { useState } from 'react'
-import { User, Settings, Crown, Globe, MapPin, Shield } from 'lucide-react'
+import { User, Settings, Crown, Globe, MapPin, Shield, CreditCard, AlertCircle } from 'lucide-react'
 import InfoCard from '../components/InfoCard'
 import CallToActionButton from '../components/CallToActionButton'
+import { upgradeToPremium, PRICING_PLANS, hasFeatureAccess } from '../utils/stripe'
+import { updateUser } from '../utils/supabase'
 
 const ProfileView = ({ user, setUser }) => {
   const [isEditing, setIsEditing] = useState(false)
@@ -23,15 +25,43 @@ const ProfileView = ({ user, setUser }) => {
     { code: 'es', name: 'Español' }
   ]
 
-  const saveProfile = () => {
-    setUser(prev => ({
-      ...prev,
-      ...editForm
-    }))
-    setIsEditing(false)
+  const saveProfile = async () => {
+    try {
+      // Update user in database if user has an ID
+      if (user.userId) {
+        const result = await updateUser(user.userId, editForm)
+        if (!result.success) {
+          console.error('Failed to update user:', result.error)
+          alert('Failed to save profile changes')
+          return
+        }
+      }
+      
+      setUser(prev => ({
+        ...prev,
+        ...editForm
+      }))
+      setIsEditing(false)
+    } catch (error) {
+      console.error('Error saving profile:', error)
+      alert('Failed to save profile changes')
+    }
+  }
+
+  const handleUpgradeToPremium = async () => {
+    try {
+      const result = await upgradeToPremium(user.userId || 'demo-user')
+      if (!result.success) {
+        alert('Failed to upgrade to premium. Please try again.')
+      }
+    } catch (error) {
+      console.error('Error upgrading to premium:', error)
+      alert('Failed to upgrade to premium. Please try again.')
+    }
   }
 
   const toggleSubscription = () => {
+    // For demo purposes - in production this would be handled by Stripe webhooks
     setUser(prev => ({
       ...prev,
       subscriptionStatus: prev.subscriptionStatus === 'premium' ? 'free' : 'premium'
@@ -197,11 +227,11 @@ const ProfileView = ({ user, setUser }) => {
                 </ul>
                 <CallToActionButton
                   variant="premium"
-                  onClick={toggleSubscription}
+                  onClick={handleUpgradeToPremium}
                   className="w-full"
                 >
-                  <Crown className="h-5 w-5" />
-                  <span>Upgrade to Premium - $3/month</span>
+                  <CreditCard className="h-5 w-5" />
+                  <span>Upgrade to Premium - ${PRICING_PLANS.premium.price}/month</span>
                 </CallToActionButton>
               </div>
             )}

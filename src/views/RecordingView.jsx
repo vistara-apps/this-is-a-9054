@@ -1,7 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { Video, Square, Play, Pause, Download, Share, Lock } from 'lucide-react'
+import { Video, Square, Play, Pause, Download, Share, Lock, Upload, AlertCircle } from 'lucide-react'
 import InfoCard from '../components/InfoCard'
 import CallToActionButton from '../components/CallToActionButton'
+import { createIncident, uploadRecording } from '../utils/supabase'
+import { hasFeatureAccess } from '../utils/stripe'
 
 const RecordingView = ({ user, setUser }) => {
   const [isRecording, setIsRecording] = useState(false)
@@ -44,7 +46,7 @@ const RecordingView = ({ user, setUser }) => {
         }
       }
 
-      mediaRecorderRef.current.onstop = () => {
+      mediaRecorderRef.current.onstop = async () => {
         const blob = new Blob(chunksRef.current, { type: 'video/webm' })
         const url = URL.createObjectURL(blob)
         const timestamp = new Date().toISOString()
@@ -55,11 +57,18 @@ const RecordingView = ({ user, setUser }) => {
           blob,
           timestamp,
           duration: recordingTime,
-          location: user.location
+          location: user.location,
+          uploading: false,
+          uploaded: false
         }
         
         setRecordings(prev => [newRecording, ...prev])
         setCurrentRecording(newRecording)
+        
+        // Auto-save to Supabase if user has premium or within free limits
+        if (shouldSaveRecording()) {
+          await saveRecordingToDatabase(newRecording)
+        }
       }
 
       mediaRecorderRef.current.start()
@@ -138,6 +147,74 @@ const RecordingView = ({ user, setUser }) => {
   }
 
   const maxRecordings = user.subscriptionStatus === 'premium' ? Infinity : 3
+
+  // Check if recording should be saved based on subscription and limits
+  const shouldSaveRecording = () => {
+    if (hasFeatureAccess(user.subscriptionStatus, 'unlimited_recordings')) {
+      return true
+    }
+    return recordings.length < maxRecordings
+  }
+
+  // Save recording to Supabase
+  const saveRecordingToDatabase = async (recording) => {
+    try {
+      // Update recording status to uploading
+      setRecordings(prev => prev.map(r => 
+        r.id === recording.id ? { ...r, uploading: true } : r
+      ))
+
+      // Upload file to Supabase storage
+      const fileName = `${user.userId || 'demo'}/recording-${recording.id}-${Date.now()}.webm`
+      const uploadResult = await uploadRecording(recording.blob, fileName)
+      
+      if (!uploadResult.success) {
+        throw new Error(uploadResult.error)
+      }
+
+      // Create incident record in database
+      const incidentData = {
+        userId: user.userId || 'demo-user',
+        timestamp: recording.timestamp,
+        location: recording.location,
+        recordingUrl: uploadResult.data.publicUrl,
+        notes: `Recording duration: ${recording.duration} seconds`,
+        incidentType: 'recording'
+      }
+
+      const incidentResult = await createIncident(incidentData)
+      
+      if (!incidentResult.success) {
+        throw new Error(incidentResult.error)
+      }
+
+      // Update recording status to uploaded
+      setRecordings(prev => prev.map(r => 
+        r.id === recording.id ? { 
+          ...r, 
+          uploading: false, 
+          uploaded: true,
+          incidentId: incidentResult.data.incident_id,
+          cloudUrl: uploadResult.data.publicUrl
+        } : r
+      ))
+
+    } catch (error) {
+      console.error('Error saving recording:', error)
+      
+      // Update recording status to failed
+      setRecordings(prev => prev.map(r => 
+        r.id === recording.id ? { ...r, uploading: false, uploaded: false } : r
+      ))
+      
+      alert('Failed to save recording to cloud storage')
+    }
+  }
+
+  // Manual upload function for failed recordings
+  const retryUpload = async (recording) => {
+    await saveRecordingToDatabase(recording)
+  }
 
   return (
     <div className="space-y-6">
